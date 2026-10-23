@@ -1,0 +1,60 @@
+
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and extract project ZIP
+        run: |
+          set -e
+          ZIP_FILE="$(find . -maxdepth 2 -type f -name '*.zip' | head -n 1)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No project ZIP found in repository."
+            exit 1
+          fi
+          mkdir -p extracted
+          unzip -o "$ZIP_FILE" -d extracted
+          echo "ZIP extracted:"
+          find extracted -maxdepth 3 -name 'settings.gradle*'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Build debug APK
+        run: |
+          set -e
+          GRADLE_FILE="$(find extracted -type f -name 'gradlew' | head -n 1)"
+          if [ -n "$GRADLE_FILE" ]; then
+            PROJECT_DIR="$(dirname "$GRADLE_FILE")"
+            chmod +x "$GRADLE_FILE"
+            cd "$PROJECT_DIR"
+            ./gradlew assembleDebug
+          else
+            echo "ERROR: ZIP must contain a Gradle wrapper (gradlew)."
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TargetDemo-debug-apk
+          path: extracted/**/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
