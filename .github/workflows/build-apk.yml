@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,13 +22,18 @@ jobs:
           set -e
           ZIP_FILE="$(find . -maxdepth 2 -type f -name '*.zip' | head -n 1)"
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No project ZIP found in repository."
+            echo "ERROR: No project ZIP found."
             exit 1
           fi
           mkdir -p extracted
           unzip -o "$ZIP_FILE" -d extracted
-          echo "ZIP extracted:"
-          find extracted -maxdepth 3 -name 'settings.gradle*'
+          PROJECT_DIR="$(dirname "$(find extracted -type f -name settings.gradle.kts -o -name settings.gradle | head -n 1)")"
+          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
+            echo "ERROR: Gradle project not found."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory: $PROJECT_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -35,22 +41,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
       - name: Build debug APK
         run: |
           set -e
-          GRADLE_FILE="$(find extracted -type f -name 'gradlew' | head -n 1)"
-          if [ -n "$GRADLE_FILE" ]; then
-            PROJECT_DIR="$(dirname "$GRADLE_FILE")"
-            chmod +x "$GRADLE_FILE"
-            cd "$PROJECT_DIR"
-            ./gradlew assembleDebug
-          else
-            echo "ERROR: ZIP must contain a Gradle wrapper (gradlew)."
-            exit 1
-          fi
+          cd "$PROJECT_DIR"
+          gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
